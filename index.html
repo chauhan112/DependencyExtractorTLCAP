@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html>
+  <head>
+      <meta charset="utf-8" />
+      <meta name="viewport" content="width=device-width,initial-scale=1" />
+      <title>🦜 Polyglot - Piratical PyScript</title>
+      <link rel="stylesheet" href="https://pyscript.net/releases/2024.7.1/core.css">
+      <script type="module" src="https://pyscript.net/releases/2024.7.1/core.js"></script>
+  </head>
+  <body>
+
+
+    
+
+    <form enctype="multipart/form-data">
+    <input id="upload" type="file" name="files">
+    </form>
+        
+    <textarea class="form-control" rows=35 cols=120 id="upload_file"></textarea>
+    <py-script>
+        from js import document
+        from io import BytesIO, TextIOWrapper
+        import json
+        from pyscript import when
+    
+        class DynamicTreeRenderer:
+            def get(dic, loc):
+                val = dic
+                for x in loc:
+                    val = val[x]
+                return val
+            def __init__(self):
+                self._loc = []
+                self._temp = None
+            def set_loc_appender(self, func):
+                self._location_appender = func
+            def set_dic(self, dic):
+                self._model = {"root": dic}
+                self.set_dir_checker(lambda x: type(DynamicTreeRenderer.get(self._model, self._loc + [x])) in [dict, list])
+                self.set_name_getter(lambda i, x: x)
+                self.set_children_getter(self._dic_child_getter_default)
+                self.set_loc_appender(lambda ctx, x: ctx._loc.append(x))
+                self._temp = "root"
+            def _dic_child_getter_default(self, x):
+                val = DynamicTreeRenderer.get(self._model, self._loc)
+                if type(val) in [list, set]:
+                    return val
+                elif type(val) == dict:
+                    return list(val.keys())
+                return []
+            def set_dir_checker(self, func):
+                self._dir_checker = func
+            def set_name_getter(self, func):
+                self._name_getter = func
+            def set_children_getter(self, func):
+                self._child_getter = func
+            def getAsText(self):
+                return "\n".join(self._tree(self._temp)) 
+            def _tree(self,dir_path , prefix: str='', lyr = 0):
+                self._location_appender(self, dir_path)
+                space =  '    '
+                branch = '│   '
+                tee =    '├── '
+                last =   '└── '
+                contents = self._child_getter(dir_path)
+                pointers = [tee] * (len(contents) - 1) + [last]
+                for i, (pointer, path) in enumerate(zip(pointers, contents)):
+                    yield prefix + pointer + self._name_getter(i, path)
+                    if lyr < self._depth and self._dir_checker(path):
+                        extension = branch if pointer == tee else space
+                        yield from self._tree(path, prefix=prefix+extension, lyr=lyr+1)
+                if len(self._loc) > 0:
+                    self._loc.pop()
+            def set_root_node_of_a_tree(self, root):
+                self._model = root
+                self.set_dir_checker(lambda x: x.children != 0)
+                self.set_name_getter(lambda i, x: x)
+                self.set_children_getter(lambda x: list(x.children.keys()))
+                self.set_loc_appender(lambda ctx, x: ctx._loc.append(x))
+                self._temp = self._model
+            def set_list(self, data):
+                self._model = data
+                self.set_dir_checker(lambda x: False)
+                self.set_name_getter(lambda i, x: str(x))
+                self.set_children_getter(lambda x: self._model)
+                self.set_loc_appender(lambda ctx, x: ctx._loc.append(x))
+                self.set_depth_level(1)
+                self._temp = self._model
+            def set_depth_level(self, lvl):
+                self._depth = lvl
+        class AppDeployment:
+            def set_content(self, content):
+                self._data = json.loads(content)
+            def printAllDependencies(self):
+                a = {}
+                collector = {}
+                self._deps2024(self._data["result"], a)
+                self._update_dependency_graph(a,collector)
+                dtr = DynamicTreeRenderer()
+                dtr.set_dic(a[("", '')])
+                collector["root"] =a[("", '')]
+                dtr.set_depth_level(100)
+                def nm(i, x):
+                    return '-'.join(x)
+                def child_getter(x):
+                    val = collector[x]
+                    if type(val) in [list, set]:
+                        return val
+                    elif type(val) == dict:
+                        return list(val.keys())
+                    return []
+                def dir_checker(x):
+                    return x in collector
+                dtr.set_name_getter(nm)
+                dtr.set_children_getter(child_getter)
+                dtr.set_dir_checker(dir_checker)
+                return dtr.getAsText()
+            def _update_dependency_graph(self, data, collector):
+                for ke in data:
+                    val = data[ke]
+                    collector[ke] = val
+                    self._update_dependency_graph( val, collector)
+            def _deps2024(self, objx, res = {}, parentName="", parentLabel=""):
+                for i, obj in enumerate(objx['includes']):
+                    appName = obj["includedName"]
+                    if "includedLabel" not in obj:
+                        break
+                    label = obj["includedLabel"]
+                    if (parentName, parentLabel) not in res:
+                        res[(parentName, parentLabel)] = {}
+                    res[(parentName, parentLabel)][(appName, label)] = {}
+                    
+                for i, obj in enumerate(objx['resolvedIncludes']):
+                    appName = obj["pk"]["name"]
+                    label = obj["pk"]["label"]
+                    if (parentName, parentLabel) not in res:
+                        res[(parentName, parentLabel)] = {}
+                    if (appName, label) not in res[(parentName, parentLabel)]:
+                        res[(parentName, parentLabel)][(appName, label)] = {}
+                    if 'resolvedIncludes' in obj:
+                        self._deps2024(obj, res[(parentName, parentLabel)], appName, label)
+        
+    
+        @when('change', '#upload')
+        async def processFile(*args):
+            csv_file = document.getElementById('upload').files.item(0)
+    
+            array_buf = await csv_file.arrayBuffer() # Get arrayBuffer from file
+            file_bytes = array_buf.to_bytes() # convert to raw bytes array 
+            csv_file = BytesIO(file_bytes) # Wrap in Python BytesIO file-like object
+    
+            wrapper = TextIOWrapper(csv_file, encoding='utf-8')
+            content = wrapper.read()
+            ad = AppDeployment()
+            ad.set_content(content)
+            document.getElementById('upload_file').value = ad.printAllDependencies()
+            
+    </py-script>
+  </body>
+</html>
